@@ -62,3 +62,4 @@ def plot_monthly_average(dataframe : DataFrame):
     plt.ylabel('Indian Rupees to U.S. Dollar Spot Exchange Rate')
     plt.legend()
     plt.show()
+
