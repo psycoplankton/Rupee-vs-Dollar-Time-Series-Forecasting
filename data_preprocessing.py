@@ -7,6 +7,7 @@ import pandas as pd
 from pandas import DataFrame
 import sklearn
 from sklearn.preprocessing import LabelEncoder
+from typing import Dict, List
 
 def remove_nan(dataframe : DataFrame):
     for i in range(len(dataframe)):
@@ -49,9 +50,8 @@ class TrainTestValidationSplit(Dataset):
 
         return train_loader, val_loader, test_loader
     
-from pandas import DataFrame
-import sklearn
-from sklearn.preprocessing import LabelEncoder
+
+
 class PreProcessing():
     def __init__(self):
         pass
@@ -83,13 +83,14 @@ class PreProcessing():
         df = dataframe.copy()
         g = torch.Generator().manual_seed(2184239752)
         le = transform
-        year = torch.Tensor(le.fit_transform(df['Year'].unique())) #(13, )
-        period = df['Year'].nunique()
-        Year_sine = torch.sin((2 * torch.pi) * year / period) #(13, )
-        Year_sine = torch.reshape(Year_sine, (Year_sine.shape[0], 1))
-        emb = torch.randn((Year_sine.shape[1], config.max_input_length), generator=g)
-        year_embeddings = Year_sine @ emb # (13, 60)
-        return year_embeddings
+        year = torch.Tensor(le.fit_transform(df['Year'].to_numpy())) #(1, 3132)
+
+        year = torch.reshape(year, (year.shape[0], 1)) # (3132, 1)
+        pad = config.max_input_length - year.shape[1]
+        year = torch.nn.functional.pad(year, (0, pad)) # (3132, 60)
+        #emb = torch.randn((Year_sine.shape[1], max_input_length), generator=g)
+        #year_embeddings = Year_sine @ emb # (13, 60)
+        return torch.tensor(year)
 
     def encode_month(self, dataframe : DataFrame, transform) -> torch.Tensor:
         """
@@ -101,11 +102,13 @@ class PreProcessing():
         df = dataframe.copy()
         g = torch.Generator().manual_seed(2184239752)
         cyc = transform
-        Month = cyc.fit_transoform(torch.tensor(np.sort(df['Month'].unique())), period=12) #2, 12
+        Month = cyc.fit_transform(torch.tensor(df['Month'].to_numpy()), period=12) #2, 3132
         Month = torch.reshape(Month, (Month.shape[1], Month.shape[0]))
-        emb = torch.randn((Month.shape[1], config.max_input_length), generator=g)
-        month_embeddings = Month @ emb # (12, 60)
-        return month_embeddings
+        pad = config.max_input_length - Month.shape[1]
+        Month = torch.nn.functional.pad(Month, (0, pad))
+        #emb = torch.randn((Month.shape[1], max_input_length), generator=g)
+        #month_embeddings = Month @ emb # (12, 60)
+        return Month
 
     def encode_day(self, dataframe : DataFrame, transform) -> torch.Tensor:
         """
@@ -117,26 +120,50 @@ class PreProcessing():
         df = dataframe.copy()
         g = torch.Generator().manual_seed(2184239752)
         cyc = transform
-        Day = cyc.fit_transoform(torch.tensor(np.sort(df['Day'].unique())), period=31) #2, 31
-        Day = torch.reshape(Day, (Day.shape[1], Day.shape[0]))
-        emb = torch.randn((Day.shape[1], config.max_input_length), generator=g)
-        day_embeddings = Day @ emb # (31, 60)
-        return day_embeddings
+        Day = cyc.fit_transform(torch.tensor(df['Day'].to_numpy()), period=31) #2, 3132
+        Day = torch.reshape(Day, (Day.shape[1], Day.shape[0])) # (3132, 2)
+        pad = config.max_input_length - Day.shape[1]
+        Day = torch.nn.functional.pad(Day, (0, pad))
+        #emb = torch.randn((Day.shape[1], max_input_length), generator=g)
+        #day_embeddings = Day @ emb # (31, 60)
+        return Day
 
     def train_test_split(self, dataframe : DataFrame):
         df = dataframe.copy()
         df.drop(['Year', 'Month', 'Day', 'DATE'], axis= 1, inplace=True)
-        test , train = [], []
-        test.append('DEXINUS')
+        labels , inputs = [], []
+        labels.append('DEXINUS')
         for i in range(config.max_prediction_length-1):
-            test.append(f'DEXINUS_shift_{i+1}')
+            labels.append(f'DEXINUS_shift_{i+1}')
         for i in range(config.max_input_length):
-            train.append(f'DEXINUS_shift_{i + 30}')
+            inputs.append(f'DEXINUS_shift_{i + 30}')
 
-        df_train = df.drop(columns = test)
-        df_test = df.drop(columns = train)
+        df_inputs = df.drop(columns = labels)
+        df_labels = df.drop(columns = inputs)
 
-        train_dataset = torch.Tensor(df_train.to_numpy(dtype=float))
-        test_dataset = torch.Tensor(df_test.to_numpy(dtype=float))
+        inputs = torch.Tensor(df_inputs.to_numpy(dtype=float))
+        labels = torch.Tensor(df_labels.to_numpy(dtype=float))
 
-        return train_dataset, test_dataset
+        return inputs, labels
+
+    def labeldict(self, labels : torch.Tensor, values : torch.Tensor) -> Dict[float, int]:
+        return {labels[i]:values[i] for i in range(len(labels))}
+
+    def get_dataloaders(self, inputs : torch.Tensor, labels : torch.Tensor, embeddings : List[torch.Tensor], dataset_class : TimeSeriesDataset, ratio : float = 0.8) -> DataLoader:
+        features = torch.stack((inputs,
+                                embeddings[0],
+                                embeddings[1],
+                                embeddings[2]), dim=1)
+
+
+        split = int(0.8 * inputs.shape[0])
+        train_inputs, train_labels = features[:split], labels[:split]
+        test_inputs, test_labels = features[split:], labels[split:]
+        print(train_inputs.shape), print(test_inputs.shape)
+        training_data = dataset_class(train_inputs, train_labels)
+        test_data = dataset_class(test_inputs, test_labels)
+
+        train_loader = torch.utils.data.DataLoader(training_data, batch_size=64, shuffle=False)
+        test_loader = torch.utils.data.DataLoader(test_data, batch_size=64, shuffle=False)
+
+        return train_loader, test_loader

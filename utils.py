@@ -63,3 +63,12 @@ def plot_monthly_average(dataframe : DataFrame):
     plt.legend()
     plt.show()
 
+def predict(data : torch.Tensor, model : nn.Module):
+    model.eval()
+    predictions = []
+    for i, (inputs, labels) in enumerate(data):
+        inputs = inputs.to(device)
+        outputs = model(inputs)
+        for i in range(outputs.shape[0]):
+            predictions.append(outputs[i])
+    return torch.stack(predictions)
