@@ -7,40 +7,21 @@ from pytorch_forecasting.metrics.point import MAE, MAPE, SMAPE, MASE, RMSE
 import config
 
 class NBEATS():
-    def __init__(self,
-        stack_types,
-        num_blocks,
-        num_block_layers,
-        widths,
-        sharing,
-        expansion_coefficient_lengths,
-        prediction_length,
-        loss,
-        logging_metrics         
-    ) -> None:
-        
-        self.stack_types = stack_types,
-        self.num_blockes = num_blocks,
-        self.num_block_layers = num_block_layers,
-        self.widths = widths,
-        self.sharing = sharing,
-        self.expansion_coefficient_lengths = expansion_coefficient_lengths,
-        self.prediction_length = prediction_length,
-        self.loss = loss,
-        self.logging_metrics = logging_metrics
 
-        
-    nbeats = NBeats(
+    nbeats = NBEATS = NBeats.from_dataset(
+    dataset = train_dataset,
     stack_types = ["generic", "generic", "generic"],
     num_blocks = [3, 3, 3],
     num_block_layers = [4, 4, 4],
     widths = [512, 512, 512],
     sharing = False,
     expansion_coefficient_lengths = [32, 32, 32],
-    prediction_length = config.HORIZON,
-    loss = MAE(),
-    logging_metrics = nn.ModuleList([SMAPE(), MAE(), RMSE(), MAPE(), MASE()])
+    prediction_length = max_prediction_length,
+    context_length = max_input_length,
+    reduce_on_plateau_patience = 10,
+    loss = MASE()
 )
+
 
 NHITS = NHiTS(
     output_size = config.HORIZON,

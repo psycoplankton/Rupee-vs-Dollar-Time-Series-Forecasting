@@ -16,39 +16,42 @@ def remove_nan(dataframe : DataFrame):
         else:
             dataframe['DEXINUS'][i] = float(dataframe['DEXINUS'][i-1])
 
-class TrainTestValidationSplit(Dataset):
-    def get_train_test_val_splits(self, dataframe : DataFrame, train_ratio : int =0.8, val_ratio : int =0.1, test_ratio : int =0.1):
 
-        #convert the dataframe object to pytorch tensor    
-        dataset = TimeSeriesDataSet(data=dataframe,
-                                    time_idx='time_idx',
-                                    target=['DEXINUS'],
-                                    group_ids=['group_ids'])
-
+class TrainTestSplit():
+    def get_train_test_splits(self, dataframe : pd.DataFrame, dataset_class : Dataset, train_ratio : float =0.8):
 
         #calculate the length of the dataset
-        length = len(dataframe)
-        train_size = int(train_ratio * length)
-        val_size = int(val_ratio * length)
-        test_size = length - train_size - val_size
+        split = int(train_ratio * len(dataframe))
 
-        train_dataset = dataframe[:train_size]
-        val_dataset = dataframe[train_size:train_size+val_size]
-        test_dataset = dataframe[train_size+val_size:]
+        train_dataframe = dataframe[:split]
+        test_dataframe = dataframe[split:]
 
-        return train_dataset, val_dataset, test_dataset
-    
-    def get_train_test_val_dataloaders(self, train_dataset : TimeSeriesDataSet, val_dataset : TimeSeriesDataSet, test_dataset : TimeSeriesDataSet, batch_size : int):
+        train_dataset = dataset_class(
+            data=train_dataframe,
+            group_ids = ['group_ids'],
+            time_idx = 'time_idx',
+            target = 'DEXINUS',
+            max_encoder_length = max_input_length,
+            min_encoder_length = max_input_length,
+            max_prediction_length = max_prediction_length,
+            time_varying_unknown_reals = ['DEXINUS']
+        )
 
-        train_dataset = TimeSeriesDataSet(train_dataset, time_idx='time_idx', target='DEXINUS', group_ids=['group_ids'])
-        val_dataset = TimeSeriesDataSet(val_dataset, time_idx='time_idx', target='DEXINUS', group_ids=['group_ids'])
-        test_dataset = TimeSeriesDataSet(test_dataset, time_idx='time_idx', target='DEXINUS', group_ids=['group_ids'])
+        test_dataset = train_dataset.from_dataset(
+            dataset = train_dataset,
+            data = df,
+            min_prediction_idx = split,
+        )
+        return train_dataset, test_dataset
 
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=False)
-        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
-        return train_loader, val_loader, test_loader
+    def get_train_test_dataloaders(self, train_dataset, test_dataset, batch_size):
+
+        train_loader = train_dataset.to_dataloader(train = True, batch_size = batch_size, num_workers=2)
+
+        test_loader = test_dataset.to_dataloader(train = False, batch_size = batch_size, num_workers=2)
+
+        return train_loader, test_loader
     
 
 
